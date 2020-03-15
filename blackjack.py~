@@ -1,0 +1,396 @@
+'''
+program by stanely
+
+This is Milestone Project #2 for the Python Bootcamp online course.
+Simple Blackjack written in Python
+
+Remember to lint check this program with 'pylint blackjack.py -ry'
+'''
+
+# Import needed libraries
+import math
+import random
+import sys
+
+#---
+#--- The class definitions follow below in alphabetical order.
+#---
+
+class BankRoll():
+    '''
+    Class creates a bankroll for player.  Allows deposits, bets and cashout.
+    '''
+
+    def __init__(self):
+        self.chips = 0
+
+    def deposit(self):
+        '''
+        Method prompts for deposit amount and returns total in bankroll.
+        '''
+        amount = get_pos_int('How many one dollar chips do you want to buy? ')
+        self.chips += amount
+        print('{} chips purchased. You now have {} '.format(amount, self.chips))
+        return self.chips
+
+    def bet(self):
+        '''
+        Method prompts for bet size and if there are enough chips, returns the bet amount.
+        '''
+        print('You have', self.chips, 'in your bank.')
+        amount = get_pos_int('\nHow many chips do you want to bet? ')
+        while amount > self.chips:
+            print("\nYou only have ", self.chips, ". Try again...")
+            amount = get_pos_int('How many chips do you want to bet? ')
+        return amount
+
+    def lose(self, chips):
+        '''
+        Method to deduct chips lost.  Returns amount in bankroll.
+        '''
+        self.chips -= chips
+        print('You lost ', chips, 'chips. You have ', self.chips, ' in you bank.')
+        return self.chips
+
+    def win(self, chips):
+        '''
+        Method to add chips won.  Returns amount in bankroll.
+        '''
+        self.chips += chips
+        print('You won ', chips, 'chips. You have ', self.chips, ' in you bank.')
+        return self.chips
+
+    def bal(self):
+        '''
+        Method to return the balance of the BankRoll
+        '''
+        return self.chips
+
+class Hand:
+    '''
+    This is the playing hand consisting of dealt cards
+    '''
+    def __init__(self):
+        '''
+        Initialization method
+        '''
+        self.cards = [] # Start with an empty hand.
+
+    def add(self, card):
+        '''
+        Method to add a card to the hand.
+        '''
+        self.cards.append(card)
+
+    def ace_count(self):
+        '''
+        Method to count number of aces in hand.
+        This is used for the dealer's hand to compute value.
+        '''
+        count = 0
+        for i in self.cards:
+            if i%13 == 0:
+                count += 1
+        return count
+
+    def show_dh(self):
+        '''
+        Method to show the dealer's hand. Does not reveal the face-down card.
+        '''
+        nth_card = 0
+        for i in self.cards:
+            if nth_card != 1:
+                nth_card += 1
+                show_card(i)
+            else:
+                print('Face down card is a ???')
+                nth_card += 1
+
+    def show_ph(self):
+        '''
+        Method to show the dealer's or player's hand. Shows all cards.
+        '''
+        for i in self.cards:
+            show_card(i)
+
+    def val(self, aceval):
+        '''
+        Method to calculate the value of a hand. Aces have value of aceval.
+        '''
+        tot_val = 0
+        for i in self.cards:                # For all cards in hand
+            my_card = i%13                  # Strip out the suit
+            if 1 <= my_card <= 9:           # Card is 2 through 10
+                tot_val += my_card + 1
+            elif 10 <= my_card <= 12:             # Face card
+                tot_val += 10
+            else:
+                tot_val += aceval
+        return tot_val
+
+class ShuffledDeck:
+    '''
+    Class creates a shuffled deck of cards that's ready for play, and provides methods for the deck.
+    '''
+
+    def __init__(self):
+        '''
+        Initialize a shuffled deck ready for play
+        '''
+        # Create a new deck of cards and their definition. These will all be constants.
+        # A list of 52 numbers from 0 to 51 is the deck
+        self.new_deck = [card for card in range(13 * 4)]
+
+
+        # Shuffle the deck for play.
+        self.play_deck = self.new_deck  # Get a new deck for my game
+        random.shuffle(self.play_deck)  # Shuffle the deck...
+
+    def show(self):
+        '''
+        Method shows the remaining play deck.
+        '''
+        print(self.play_deck)
+
+    def deal(self):
+        '''
+        Method deals a card from the top of the deck.
+        '''
+        next_card = self.play_deck[0]
+        self.play_deck.pop(0)
+        return next_card
+
+#---
+#--- Function definitions follow below in alphabetical order.
+#---
+
+def best_val(hand):
+    '''
+    Function to calculate the best possible value of a hand.
+    '''
+    aces = hand.ace_count()
+    val = hand.val(11)
+    while val > 21 and aces > 0:  # Keep subtracting 10 for each ace until below 22
+        val -= 10     # Convert one ace from 11 to 1
+        aces -= 1       # One less ace in hand
+    return val
+
+def first_two_cards(player_hand, player_bank, dealer_hand, game_deck, bet_chips):
+    '''
+    Function to deal first two cards, check for naturals and pay out accordingly.
+    '''
+    # Deal two cards each to player and dealer
+    print('\nDealing the first two cards...')
+    for i in range(2):
+        card = game_deck.deal()
+        print('Player card ', i + 1, 'is...')
+        show_card(card)
+        player_hand.add(card)  # Add dealt card in to player's hand.
+
+        card = game_deck.deal()
+        print('Dealer card ', i + 1, 'is...')
+        if i == 1:
+            print('FACE DOWN')
+        else:
+            show_card(card)
+        dealer_hand.add(card)  # Add dealt card to dealer's hand.
+
+    # Check for natural black jacks. (21 with 2 cards)
+    p_val = player_hand.val(11)
+    d_val = dealer_hand.val(11)
+
+    print('\nYou have...')
+    player_hand.show_ph()
+
+    if p_val == 21 and d_val == 21: # Standoff with naturals, game over no gain & no loss
+        print('\nThe dealer has a natural and flips over the card.  In hand are...')
+        dealer_hand.show_ph()
+        print("\nYou have a natural too. It's a standoff. Bet returned.")
+        return True
+    if p_val == 21:     # Player has natural & wins 1.5 times bet.
+        print('\nYou have a natural.  Dealer flips over the card and has...')
+        dealer_hand.show_ph()
+        print('\nYou win 1.5 times your bet (truncated to nearest dollar)')
+        player_bank.win(math.trunc(1.5 * bet_chips))
+        return True
+    if d_val == 21:     # Dealer has natural. Player loses bet.
+        print('\nDealer has a natural. Flips over the card and has...')
+        dealer_hand.show_ph()
+        print('\nDealer wins with natural. You lose your bet.')
+        player_bank.lose(bet_chips)
+        print('You have ', player_bank.bal(), ' chips left.')
+        return True
+    print('\nThe dealer has...')
+    dealer_hand.show_dh()
+    return False
+
+def get_kb(prompt):
+    '''
+    Function to get user keyboard input and handle ^C interrupt.
+    '''
+    in_str = ''
+    while in_str == '':
+        try:
+            in_str = input(prompt + ' ')
+        except KeyboardInterrupt:
+            print('\nKeyboard Interrupt (^C) detected.  Quitting game.  Goodbye!')
+            # os._exit(0)
+            sys.exit()
+            return 'ERROR'
+        except EOFError:
+            print('\nBad input, please try again...')
+    return in_str
+
+def get_pos_int(prompt):
+    '''
+    Function to get user positive integer keyboard input.
+    '''
+    while True:
+        try:
+            pos_int = int(get_kb(prompt))
+        except TypeError:
+            print('A whole number bigger than 0 is needed...')
+        except SystemExit:
+            sys.exit()      # Probably caused by a keyboard interrupt.
+            return 1
+        else:
+            if pos_int <= 0:
+                print('A whole number bigger than 0 is needed...')
+            else:
+                return pos_int
+
+def hit_me(hand, deck):
+    '''
+    Function to accept hit/stand requests from player. Returns True if busted.
+    '''
+    player_hit = True   # Loop for hitting the player until they stand
+    while player_hit:
+        # Test for bust
+        p_val = hand.val(1)
+        if p_val > 21:
+            print('Your hand value is ', p_val, ', you busted.  Sorry, dealer wins!')
+            busted = True
+            break
+        else:
+            busted = False
+        # Get player's hit/stand decision.
+        please_choose = True
+        while please_choose:
+            play_choice = get_kb('\nEnter 1 for "Hit" and 2 for "Stand": ')
+            if  play_choice == '2':
+                please_choose = player_hit = False
+            elif play_choice == '1':
+                # Deal cards to player.
+                card = deck.deal()
+                print('\nYou were dealt...')
+                show_card(card)
+                hand.add(card)  # Add next card to player's hand.
+                print('\nYou have...')
+                hand.show_ph()
+                please_choose = False
+    return busted
+
+def play_blackjack():
+    '''
+    This is the main Blackjack loop.
+    '''
+    # Initialize the player's bankroll
+    player_bank = BankRoll()
+
+    print('\nYou\'ll need to buy some chips to get started.')
+    player_bank.deposit()
+
+    while True:        # Keep playing games until the player quits
+        bet_chips = player_bank.bet()
+        game_deck = ShuffledDeck()  # Get a shuffled deck
+        #game_deck.show()  # Debug print the shuffled deck
+        # Initialize player & dealer hands
+        player_hand = Hand()
+        dealer_hand = Hand()
+
+        # Start game by dealing two cards and checking for naturals.
+        if first_two_cards(player_hand, player_bank, dealer_hand, game_deck, bet_chips):
+            # Someone got a natural, so check if want to play again.
+            play_or_quit(player_bank)
+            continue
+
+        if hit_me(player_hand, game_deck):  # Player signals hit me or stand, could bust.
+            # Player busted and settles up the loss.
+            player_bank.lose(bet_chips)
+        else:                   # Not busted, let's see what happened
+            # Calculate best possible player hand value based on aces in hand.
+            p_val = best_val(player_hand)
+            # Turn up dealer's down card
+            print('The dealer turns up his hidden card, and has...')
+            dealer_hand.show_ph()
+
+            # Keep hitting dealer while total < 17 and not bust or total = 17 based on aces.
+            d_val = best_val(dealer_hand)   # Calculate best possible dealer hand value with aces.
+            while d_val < 17:
+                # Deal card to dealer.
+                card = game_deck.deal()
+                print('\nDealer was dealt...')
+                show_card(card)
+                dealer_hand.add(card)   # Add next card to dealer's hand and show hand.
+                print('\nDealer has...')
+                dealer_hand.show_ph()
+
+                d_val = best_val(dealer_hand)   # Calculate best possible dealer hand value.
+
+            if d_val > 21:          # Dealer busts
+                print('Dealer busted with ', d_val, ' You win your bet!')
+                player_bank.win(bet_chips)
+            elif d_val > p_val:     # Dealer wins
+                print('Dealer wins with ', d_val, 'vs your ', p_val, '. You lost your bet, sorry.')
+                player_bank.lose(bet_chips)
+            elif d_val == p_val:    # It's a tie
+                print("It's a tie, ", p_val, 'vs ', d_val, "No win or loss.")
+            else:                   # Player wins
+                print('You win with ', p_val, " vs the dealer's ", d_val, '. You won your bet.')
+                player_bank.win(bet_chips)
+
+        play_or_quit(player_bank)
+
+def play_or_quit(player_bank):
+    '''
+    Function decides if to keep playing or quit.  Quit is by hard exit, 'cause we're done.
+    '''
+    if player_bank.bal() == 0:
+        print('You lost all your money.  Go home.') # No choice, gotta quit.
+        sys.exit()
+    if get_kb('Do you want to play again? (y/n) ').lower() != 'y':
+        sys.exit()  # Anything other than a 'y' means no and quit.
+
+def show_card(card):
+    '''
+    Function to show the face and suit of a card
+    '''
+    face = CARDS[card%13]  # My card mod 13 is a particular card in the list of cards.
+
+    # Figure out the suit of the card.
+    suit_index = math.trunc(card / 13)
+
+    suit = SUITS[suit_index]
+    print('{} of {}'.format(face, suit))  # Print info about the card
+
+#***
+#*** The main program starts here.  Print intro and start play.
+#***
+
+#---
+#---  The following code block initializes needed constants
+#---
+# Create the cards that can be in the deck.
+CARDS = [str(i) for i in range(1, 14)]  # Start with just the numbers
+CARDS[0] = 'Ace'  # Then add the face cards
+CARDS[12] = 'King'
+CARDS[11] = 'Queen'
+CARDS[10] = 'Jack'
+
+SUITS = ['Spades', 'Clubs', 'Diamonds', 'Hearts']   # Create the suits
+
+print('\n\nPython Bootcamp, Milestone Project #2 by stanely...')
+print("\nThis is the game of Blackjack. It's a gambling game where the house has better odds.")
+
+print('Hit ^C any time to quit.')
+play_blackjack()
